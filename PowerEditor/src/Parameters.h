@@ -65,6 +65,8 @@
 
 #endif
 
+#define DEFAULT_DLG_FONT L"MS Shell Dlg"
+
 class NativeLangSpeaker;
 
 /*!
@@ -741,7 +743,7 @@ struct NppGUI final
 	bool _finderShowOnlyOneEntryPerFoundLine = true;
 	bool _fif_ignoreunsavedChangesInOpenedFiles = false;
 
-	int _fileAutoDetection = cdEnabledNew;
+	int _fileAutoDetection = cdEnabled4CurrentFile;
 
 	bool _checkHistoryFiles = false;
 
@@ -892,7 +894,7 @@ struct NppGUI final
 	bool _isFawSymlinkAllowed = false; // allow to open symlink files in FaW (Folder as Workspace) panel.
 
 	WORD _fontDlgSize = 8;
-	std::wstring _fontDlgName = L"MS Shell Dlg";
+	std::wstring _fontDlgName = DEFAULT_DLG_FONT;
 };
 
 

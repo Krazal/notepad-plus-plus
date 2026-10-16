@@ -814,7 +814,26 @@ intptr_t CALLBACK GeneralSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 				::SendMessage(hFontSizeCombo, CB_SETCURSEL, cbFontSzIdx, 0);
 			}
 
-			::SetWindowTextW(::GetDlgItem(_hSelf, IDC_EDIT_DIALOG_FONT_NAME), StaticDialog::getDlgTypeface().c_str());
+			NppParameters& nppParamInst = NppParameters::getInstance();
+			const std::vector<wstring>& fontlist = nppParamInst.getFontList();
+
+			HWND hFontNameCombo = ::GetDlgItem(_hSelf, IDC_COMBO_DIALOG_FONT_NAME);
+			for (size_t i = 0, len = fontlist.size(); i < len; ++i)
+			{
+				auto j = ::SendMessage(hFontNameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(fontlist[i].c_str()));
+				::SendMessage(hFontNameCombo, CB_SETITEMDATA, j, reinterpret_cast<LPARAM>(fontlist[i].c_str()));
+			}
+
+			LRESULT iFontName = 0;
+			iFontName = ::SendMessage(hFontNameCombo, CB_FINDSTRING, 1, reinterpret_cast<LPARAM>(nppParamInst.getNppGUI()._fontDlgName.c_str()));
+
+			if (iFontName == CB_ERR)
+			{
+				nppParamInst.getNppGUI()._fontDlgName = DEFAULT_DLG_FONT;
+				iFontName = ::SendMessage(hFontNameCombo, CB_FINDSTRING, 1, reinterpret_cast<LPARAM>(nppParamInst.getNppGUI()._fontDlgName.c_str()));
+			}
+
+			::SendMessage(hFontNameCombo, CB_SETCURSEL, iFontName, 0);
 
 			return TRUE;
 		}
@@ -947,6 +966,16 @@ intptr_t CALLBACK GeneralSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 									{
 										NppParameters::getInstance().getNppGUI()._fontDlgSize = static_cast<WORD>(fontSize);
 									}
+									return TRUE;
+								}
+
+								case IDC_COMBO_DIALOG_FONT_NAME:
+								{
+									HWND hFontNameCombo = ::GetDlgItem(_hSelf, IDC_COMBO_DIALOG_FONT_NAME);
+									auto iFontSel = ::SendMessage(hFontNameCombo, CB_GETCURSEL, 0, 0);
+									auto* fnStr = reinterpret_cast<wchar_t*>(::SendMessage(hFontNameCombo, CB_GETITEMDATA, iFontSel, 0));
+									NppParameters::getInstance().getNppGUI()._fontDlgName = fnStr;
+
 									return TRUE;
 								}
 							}
@@ -3321,17 +3350,17 @@ intptr_t CALLBACK MiscSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM)
 	{
 		case WM_INITDIALOG :
 		{
-			::SendDlgItemMessage(_hSelf, IDC_COMBO_FILEUPDATECHOICE, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Enable for current file"));
+			::SendDlgItemMessage(_hSelf, IDC_COMBO_FILEUPDATECHOICE, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Enable for current file(s)"));
 			::SendDlgItemMessage(_hSelf, IDC_COMBO_FILEUPDATECHOICE, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Enable for all opened files"));
 			::SendDlgItemMessage(_hSelf, IDC_COMBO_FILEUPDATECHOICE, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Disable"));
 
 			int selIndex = -1;
 			
-			if (nppGUI._fileAutoDetection & cdEnabledOld)
+			if (nppGUI._fileAutoDetection & cdEnabled4AllFiles)
 			{
 				selIndex = fileUpdateChoiceEnable4All;
 			}
-			else if (nppGUI._fileAutoDetection & cdEnabledNew)
+			else if (nppGUI._fileAutoDetection & cdEnabled4CurrentFile)
 			{				
 				selIndex = fileUpdateChoiceEnable;
 			}
@@ -3476,9 +3505,9 @@ intptr_t CALLBACK MiscSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM)
 					if (index == fileUpdateChoiceEnable || index == fileUpdateChoiceEnable4All)
 					{
 						if (index == fileUpdateChoiceEnable4All)
-							cd |= cdEnabledOld;
+							cd |= cdEnabled4AllFiles;
 						else
-							cd |= cdEnabledNew;
+							cd |= cdEnabled4CurrentFile;
 
 						if (isSilent)
 							cd |= cdAutoUpdate;
@@ -3581,9 +3610,9 @@ intptr_t CALLBACK MiscSubDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM)
 								int cd = cdDisabled;
 
 								if (index == fileUpdateChoiceEnable4All)
-									cd |= cdEnabledOld;
+									cd |= cdEnabled4AllFiles;
 								else
-									cd |= cdEnabledNew;
+									cd |= cdEnabled4CurrentFile;
 
 								if (isSilent)
 									cd |= cdAutoUpdate;
