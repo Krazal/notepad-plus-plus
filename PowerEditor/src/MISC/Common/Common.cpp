@@ -174,6 +174,14 @@ void writeFileContent(const wchar_t *file2write, const char *content2write)
 		file.writeStr(content2write);
 }
 
+void writeFileContent(const wchar_t *file2write, const char *content2write, size_t length)
+{
+	Win32_IO_File file(file2write);
+
+	if (file.isOpened())
+		file.writeStr(content2write, length);
+}
+
 
 void writeLog(const wchar_t* logFileName, const char* log2write)
 {
@@ -636,43 +644,6 @@ wstring convertFileName(T beg, T end)
 	return strTmp;
 }
 
-
-wstring intToString(int val)
-{
-	std::vector<wchar_t> vt;
-	bool isNegative = val < 0;
-	// can't use abs here because std::numeric_limits<int>::min() has no positive representation
-	//val = std::abs(val);
-
-	vt.push_back('0' + static_cast<wchar_t>(std::abs(val % 10)));
-	val /= 10;
-	while (val != 0)
-	{
-		vt.push_back('0' + static_cast<wchar_t>(std::abs(val % 10)));
-		val /= 10;
-	}
-
-	if (isNegative)
-		vt.push_back('-');
-
-	return wstring(vt.rbegin(), vt.rend());
-}
-
-wstring uintToString(unsigned int val)
-{
-	std::vector<wchar_t> vt;
-
-	vt.push_back('0' + static_cast<wchar_t>(val % 10));
-	val /= 10;
-	while (val != 0)
-	{
-		vt.push_back('0' + static_cast<wchar_t>(val % 10));
-		val /= 10;
-	}
-
-	return wstring(vt.rbegin(), vt.rend());
-}
-
 // Build Recent File menu entries from given
 wstring BuildMenuFileName(int filenameLen, unsigned int pos, const wstring &filename, bool ordinalNumber)
 {
@@ -692,9 +663,9 @@ wstring BuildMenuFileName(int filenameLen, unsigned int pos, const wstring &file
 		else
 		{
 			div_t splitDigits = div(pos + 1, 10);
-			strTemp.append(uintToString(splitDigits.quot));
+			strTemp.append(std::to_wstring(splitDigits.quot));
 			strTemp.push_back('&');
-			strTemp.append(uintToString(splitDigits.rem));
+			strTemp.append(std::to_wstring(splitDigits.rem));
 		}
 		strTemp.append(L": ");
 	}

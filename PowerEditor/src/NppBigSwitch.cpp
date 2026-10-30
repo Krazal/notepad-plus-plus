@@ -33,6 +33,7 @@
 #include "fileBrowser.h"
 #include "NppDarkMode.h"
 #include "NppConstants.h"
+#include "Processus.h"
 
 using namespace std;
 
@@ -166,6 +167,8 @@ static bool isSenderTrusted(WPARAM wParam)
 	// Executable identity: require it to be this same binary (another Notepad++ instance with the same path)
 	if (isTrusted)
 	{
+		isTrusted = false; // reset
+
 		wchar_t senderImagePath[MAX_PATH]{};
 		DWORD dwSizeSender = MAX_PATH;
 		wchar_t selfImagePath[MAX_PATH]{};
@@ -174,11 +177,16 @@ static bool isSenderTrusted(WPARAM wParam)
 		if (::QueryFullProcessImageNameW(hProcess, 0, senderImagePath, &dwSizeSender) &&
 			::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, selfImagePath, &dwSizeSelf))
 		{
-			isTrusted = (_wcsicmp(senderImagePath, selfImagePath) == 0);
-		}
-		else
-		{
-			isTrusted = false;
+			// unfortunately, while the QueryFullProcessImageName translates a symlink image module path stored in the process PEB to the original fullpath,
+			// it OTOH leaves the possibly used short 8.3 path there intact (e.g. Notepad++ launched via CMD "C:\Progra~1\Notepad++\notepad++.exe"),
+			// so we have to ensure the final consistency in-between the compared paths ourselves
+			wchar_t senderImageLongPath[MAX_PATH]{};
+			wchar_t selfImageLongPath[MAX_PATH]{};
+			if ((::GetLongPathNameW(senderImagePath, senderImageLongPath, MAX_PATH) > 0) &&
+				(::GetLongPathNameW(selfImagePath, selfImageLongPath, MAX_PATH) > 0))
+			{
+				isTrusted = (_wcsicmp(senderImageLongPath, selfImageLongPath) == 0);
+			}
 		}
 	}
 
@@ -825,25 +833,32 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				return TRUE; // reject: not another trusted instance of this same binary
 
 			COPYDATASTRUCT* pCopyData = reinterpret_cast<COPYDATASTRUCT*>(lParam);
-			if (pCopyData->lpData == nullptr)
+			if (pCopyData->lpData == nullptr || pCopyData->cbData == 0)
 				return TRUE; // invalid
+
 
 			switch (pCopyData->dwData)
 			{
 				case COPYDATA_FULL_CMDLINE:
 				{
-					wchar_t* str2set = static_cast<wchar_t*>(pCopyData->lpData);
-					nppParam.setCmdLineString(str2set);
+					if (!_isAdministrator)
+					{
+						wchar_t* str2set = static_cast<wchar_t*>(pCopyData->lpData);
+						nppParam.setCmdLineString(str2set);
+					}
 					break;
 				}
 
 				case COPYDATA_PARAMS:
 				{
-					const CmdLineParamsDTO* cmdLineParam = static_cast<const CmdLineParamsDTO*>(pCopyData->lpData); // CmdLineParams object from another instance, but the same binary
+					CmdLineParamsDTO* cmdLineParam = static_cast<CmdLineParamsDTO*>(pCopyData->lpData); // CmdLineParams object from another instance, but the same binary
 					const DWORD cmdLineParamsSize = pCopyData->cbData; // CmdLineParams size from another instance
 					if (sizeof(CmdLineParamsDTO) == cmdLineParamsSize) // make sure the structure is the same
 					{
-						nppParam.setCmdlineParam(*cmdLineParam); // need to be guarded for possible invalid ptr passed
+						if (_isAdministrator)
+							cmdLineParam->_pluginMessage[0] = L'\0';
+
+						nppParam.setCmdlineParam(*cmdLineParam);
 
 						wstring pluginMessage{ nppParam.getCmdLineParams()._pluginMessage };
 						if (!pluginMessage.empty())
@@ -856,7 +871,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						}
 
 						NppGUI& nppGui = nppParam.getNppGUI();
-						nppGui._isCmdlineNosessionActivated = cmdLineParam->_isNoSession; // need to be guarded for possible invalid ptr passed
+						nppGui._isCmdlineNosessionActivated = cmdLineParam->_isNoSession;
 					}
 					break;
 				}
@@ -864,6 +879,18 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				case COPYDATA_FILENAMESW:
 				{
 					wchar_t* fileNamesW = static_cast<wchar_t*>(pCopyData->lpData);
+
+					size_t maxChars = pCopyData->cbData / sizeof(wchar_t);
+					size_t stringLen = wcsnlen_s(fileNamesW, maxChars);
+
+					// If stringLen equals maxChars, wcsnlen_s hit the limit 
+					// without finding a L'\0', meaning it is NOT properly null-terminated
+					if (stringLen >= maxChars)
+					{
+						// Malformed or malicious input: drop/reject the message
+						break;
+					}
+
 					const CmdLineParamsDTO& cmdLineParams = nppParam.getCmdLineParams();
 					loadCommandlineParams(fileNamesW, &cmdLineParams);
 					break;
@@ -2565,7 +2592,6 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				{
 					_pClipboardHistoryPanel->setBackgroundColor(pStyle->_bgColor);
 					_pClipboardHistoryPanel->setForegroundColor(pStyle->_fgColor);
-					_pClipboardHistoryPanel->redraw(true);
 				}
 
 				if (pStyle && _pProjectPanel_1)
@@ -2671,6 +2697,27 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			_mainEditView.execute(SCI_SETDRAGDROPENABLED, !nppParam.getSVP()._disableSelectedTextDragDrop);
 			_subEditView.execute(SCI_SETDRAGDROPENABLED, !nppParam.getSVP()._disableSelectedTextDragDrop);
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_INCSEARCHBARPOSITION:
+		{
+			ReBar& rebar = nppParam.getNppGUI()._incrementalSearchBarAtTop ? _rebarTop : _rebarBottom;
+			if (::GetParent(_incrementFindDlg.getHSelf()) == rebar.getHSelf()) // already there: a rebar is the parent of its band windows
+				return TRUE;
+
+			// hide the band before removing it: a rebar would keep the height of a visible band
+			bool isShown = _incrementFindDlg.isVisible();
+			if (isShown)
+				_incrementFindDlg.display(false);
+
+			_incrementFindDlg.destroy(); // removes the band only
+			_incrementFindDlg.addToRebar(&rebar);
+
+			if (isShown)
+				rebar.setIDVisible(REBAR_BAR_SEARCH, true);
+
+			::SendMessage(hwnd, WM_SIZE, 0, 0);
 			return TRUE;
 		}
 

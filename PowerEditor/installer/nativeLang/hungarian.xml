@@ -1364,7 +1364,7 @@
 
 				<MISC title="Egyéb">
 					<ComboBox id="6347">
-						<Element name="Az aktuális fájllal kapcsolatban"/>
+						<Element name="Az aktuális fájl(ok) kapcsán"/>
 						<Element name="Minden megnyitott fájllal kapcsolatban"/>
 						<Element name="Kikapcsolás"/>
 					</ComboBox>

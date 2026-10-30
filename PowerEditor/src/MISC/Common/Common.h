@@ -52,6 +52,7 @@ std::wstring BuildMenuFileName(int filenameLen, unsigned int pos, const std::wst
 std::string getFileContent(const wchar_t* file2read, bool* pbFailed = nullptr);
 std::wstring relativeFilePathToFullFilePath(const wchar_t *relativeFilePath);
 void writeFileContent(const wchar_t *file2write, const char *content2write);
+void writeFileContent(const wchar_t *file2write, const char *content2write, size_t length);
 bool matchInList(const wchar_t *fileName, const std::vector<std::wstring> & patterns);
 bool matchInExcludeDirList(const wchar_t* dirName, const std::vector<std::wstring>& patterns, size_t level);
 bool allPatternsAreExclusion(const std::vector<std::wstring>& patterns);
@@ -151,9 +152,6 @@ class Buffer;
 bool buf2Clipboard(const std::vector<Buffer*>& buffers, bool isFullPath, HWND hwnd);
 
 std::wstring GetLastErrorAsString(DWORD errorCode = 0);
-
-std::wstring intToString(int val);
-std::wstring uintToString(unsigned int val);
 
 HWND createToolTip(int toolID, HWND hDlg, HINSTANCE hInst, wchar_t* pszText, bool isRTL);
 HWND createToolTipRect(int toolID, HWND hWnd, HINSTANCE hInst, wchar_t* pszText, const RECT rc);
